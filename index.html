@@ -462,6 +462,32 @@ textarea:focus-visible,input:focus-visible,select:focus-visible{outline:none}
 .fold>summary{margin:-18px;padding:18px}
 .fold-sum{font:500 12px/1.3 var(--ui)}
 .fold:not([open]){gap:0}
+/* background adjustments (collapsible, inside the Background card) */
+.adj{border:1px solid var(--line-2);border-radius:10px;background:var(--panel-2)}
+.adj>summary{list-style:none;display:flex;align-items:center;gap:8px;padding:11px 12px;cursor:pointer;font:600 13px/1 var(--ui);color:var(--fg);border-radius:10px}
+.adj>summary::-webkit-details-marker{display:none}
+.adj>summary::before{content:"";width:16px;height:16px;flex:none;background:currentColor;opacity:.75;-webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'><path d='M4 7h10M18 7h2M4 17h4M12 17h8'/><circle cx='16' cy='7' r='2'/><circle cx='10' cy='17' r='2'/></svg>") center/contain no-repeat;mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'><path d='M4 7h10M18 7h2M4 17h4M12 17h8'/><circle cx='16' cy='7' r='2'/><circle cx='10' cy='17' r='2'/></svg>") center/contain no-repeat}
+.adj>summary::after{content:"";width:7px;height:7px;margin-left:6px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .12s;flex:none}
+.adj[open]>summary::after{transform:rotate(45deg) translate(-2px,-2px)}
+.adj>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.adj-t{flex:none}
+.adj-state{margin-left:auto;font:500 11.5px/1 var(--ui);color:var(--accent)}
+.adj-body{display:grid;gap:12px;padding:2px 12px 12px}
+.adj-empty{margin:0}
+.adj-grid{display:grid;gap:12px}
+.adj-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px 10px}
+.adj-row label{font:500 12.5px/1.2 var(--ui);color:var(--fg)}
+.adj-row output{font:500 12px/1 var(--mono);color:var(--muted);min-width:44px;text-align:right}
+.adj-row output.on{color:var(--accent)}
+.adj-row input[type=range]{grid-column:1/-1;width:100%;margin:0;height:18px;background:transparent;-webkit-appearance:none;appearance:none;cursor:pointer}
+.adj-row input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--line-2) 0 var(--from,0%),var(--accent) var(--from,0%) var(--to,0%),var(--line-2) var(--to,0%) 100%)}
+.adj-row input[type=range]::-moz-range-track{height:4px;border-radius:4px;background:var(--line-2)}
+.adj-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:#fff;border:2px solid var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.adj-row input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--accent)}
+.adj-row input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+.adj-row input[type=range]:disabled{opacity:.4;cursor:not-allowed}
+.adj-foot{display:flex;justify-content:flex-end}
+.btn.small{padding:7px 12px;font-size:12.5px;min-height:0}
 .lang b{font:500 12px/1 var(--ui);color:var(--faint)}
 /* ---- Batch Raffles ---- */
 .mono-inline{font-family:var(--mono);font-size:.95em}
@@ -734,6 +760,14 @@ textarea:focus-visible,input:focus-visible,select:focus-visible{outline:none}
           </label>
           <p class="hint">Fills both sizes, centred and cropped. 1200 × 675 px or larger stays sharp.</p>
         </div>
+        <details class="adj" id="rg-adj">
+          <summary><span class="adj-t">Adjust image</span><span class="adj-state" id="rg-adj-state"></span></summary>
+          <div class="adj-body">
+            <p class="hint adj-empty" id="rg-adj-empty">Add a background image first.</p>
+            <div class="adj-grid" id="rg-adj-grid"></div>
+            <div class="adj-foot"><button type="button" class="btn ghost small" id="rg-adj-reset" disabled>Reset all</button></div>
+          </div>
+        </details>
       </section>
 
       <section class="card" aria-labelledby="rg-h-raffle">
@@ -962,12 +996,43 @@ const state = { bg: null, bgName: '', bgSize: null, bgUrl: {}, bgColor: null };
 const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('decode')); i.src = src; });
 const readAs = (file, how) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r[how](file); });
 
-function coverURL(img, w, h){
+/* Background adjustments: neutral values change nothing. */
+const ADJ = [
+  { key: 'brightness', label: 'Brightness', min: -50, max: 50, unit: '' },
+  { key: 'contrast',   label: 'Contrast',   min: -50, max: 50, unit: '' },
+  { key: 'saturation', label: 'Saturation', min: -100, max: 100, unit: '' },
+  { key: 'hue',        label: 'Hue',        min: -180, max: 180, unit: '°' },
+  { key: 'warmth',     label: 'Warmth',     min: -50, max: 50, unit: '' },
+  { key: 'shade',      label: 'Darken',     min: 0, max: 60, unit: '' },
+  { key: 'blur',       label: 'Blur',       min: 0, max: 20, unit: ' px' }
+];
+const ADJ_ZERO = Object.fromEntries(ADJ.map(a => [a.key, 0]));
+const adjActive = a => !!a && ADJ.some(d => a[d.key]);
+function coverURL(img, w, h, adj){
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  const s = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const s = Math.max(w / iw, h / ih);
   const sw = w / s, sh = h / s;
-  ctx.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, w, h);
+  const a = adj || ADJ_ZERO;
+  if(adjActive(a)){
+    // blur is in output pixels at the Twitter size; scale it so both sizes look the same
+    const blur = a.blur * w / 1200;
+    ctx.filter = [`brightness(${1 + a.brightness / 100})`, `contrast(${1 + a.contrast / 100})`, `saturate(${1 + a.saturation / 100})`, `hue-rotate(${a.hue}deg)`, blur ? `blur(${blur}px)` : ''].join(' ');
+    // draw a little larger so a blur does not fade the edges
+    const pad = Math.ceil(blur * 2);
+    ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, -pad, -pad, w + pad * 2, h + pad * 2);
+    ctx.filter = 'none';
+    if(a.warmth){
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = a.warmth > 0 ? `rgba(255,138,0,${a.warmth / 100})` : `rgba(0,110,255,${-a.warmth / 100})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    if(a.shade){ ctx.fillStyle = `rgba(0,0,0,${a.shade / 100})`; ctx.fillRect(0, 0, w, h); }
+  } else {
+    ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, w, h);
+  }
   return c.toDataURL('image/jpeg', .95);
 }
 
@@ -979,15 +1044,56 @@ async function handleFile(file){
     const src = await readAs(file, 'readAsDataURL');
     const img = await loadImg(src);
     state.bg = img; state.bgName = file.name; state.bgSize = { w: img.naturalWidth, h: img.naturalHeight };
-    state.bgUrl = { twitter: coverURL(img, 1200, 675), site: coverURL(img, 435, 278) };
-    state.bgColor = dominantColor(img);
-    $('thumb-bg').style.backgroundImage = `url("${state.bgUrl.site}")`;
-    $('thumb-bg').style.backgroundSize = 'cover';
+    state.adj = { ...ADJ_ZERO };
+    rebuildBg();
     $('name-bg').textContent = file.name;
     $('sub-bg').textContent = `${img.naturalWidth} × ${img.naturalHeight} px · ${(file.size / 1024).toFixed(0)} KB`;
   } catch(e){ setStatus(e.message === 'decode' ? 'That image could not be read.' : (e.message || 'That image could not be read.'), true); }
   render();
 }
+/* Rebuild both background sizes (and the auto box colour) from the original image and the current adjustments. */
+function rebuildBg(){
+  const img = state.bg; if(!img) return;
+  const a = state.adj || ADJ_ZERO;
+  state.bgUrl = { twitter: coverURL(img, 1200, 675, a), site: coverURL(img, 435, 278, a) };
+  if(adjActive(a)){ const t = new Image(); t.onload = () => { const c = dominantColor(t); state.bgColor = c.hex ? c : dominantColor(img); render(); }; t.src = state.bgUrl.site; }
+  else state.bgColor = dominantColor(img);
+  $('thumb-bg').style.backgroundImage = `url("${state.bgUrl.site}")`;
+  $('thumb-bg').style.backgroundSize = 'cover';
+  syncAdjUI();
+}
+const adjInputs = {};
+{
+  const grid = $('adj-grid');
+  for(const d of ADJ){
+    const row = document.createElement('div'); row.className = 'adj-row';
+    const id = P + 'adj-' + d.key;
+    const lab = document.createElement('label'); lab.htmlFor = id; lab.textContent = d.label;
+    const out = document.createElement('output'); out.htmlFor = id;
+    const r = document.createElement('input'); r.type = 'range'; r.id = id; r.min = d.min; r.max = d.max; r.step = 1; r.value = 0; r.disabled = true;
+    r.addEventListener('input', () => { if(!state.bg) return; state.adj[d.key] = +r.value; scheduleBg(); syncAdjUI(); });
+    r.addEventListener('dblclick', () => { if(!state.bg) return; state.adj[d.key] = 0; scheduleBg(); syncAdjUI(); });
+    row.append(lab, out, r); grid.append(row);
+    adjInputs[d.key] = { r, out, d };
+  }
+  $('adj-reset').addEventListener('click', () => { if(!state.bg) return; state.adj = { ...ADJ_ZERO }; rebuildBg(); render(); });
+}
+let bgTimer = 0;
+function scheduleBg(){ cancelAnimationFrame(bgTimer); bgTimer = requestAnimationFrame(() => { rebuildBg(); render(); }); }
+function syncAdjUI(){
+  const has = !!state.bg, a = state.adj || ADJ_ZERO;
+  $('adj-empty').hidden = has;
+  for(const { r, out, d } of Object.values(adjInputs)){
+    r.disabled = !has; r.value = a[d.key];
+    const v = a[d.key]; out.textContent = (v > 0 && d.min < 0 ? '+' : '') + v + d.unit; out.classList.toggle('on', !!v);
+    const pct = (v - d.min) / (d.max - d.min) * 100, mid = d.min < 0 ? 50 : 0;
+    r.style.setProperty('--from', Math.min(mid, pct) + '%'); r.style.setProperty('--to', Math.max(mid, pct) + '%');
+  }
+  const n = ADJ.filter(d => a[d.key]).length;
+  $('adj-state').textContent = has && n ? `${n} change${n === 1 ? '' : 's'}` : '';
+  $('adj-reset').disabled = !has || !n;
+}
+syncAdjUI();
 {
   const drop = $('drop-bg'), input = $('in-bg');
   input.addEventListener('change', () => { handleFile(input.files[0]); input.value = ''; });
